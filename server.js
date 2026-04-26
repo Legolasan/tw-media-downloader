@@ -92,7 +92,7 @@ async function runJob(job) {
     // 1. Fetch tweets
     emit(job, 'log', `Fetching tweets for @${username}…`);
     const tweets = [];
-    let cursor = '', page = 0;
+    let cursor = '', page = 0, emptyStreak = 0;
 
     while (tweets.length < limit) {
       page++;
@@ -107,9 +107,14 @@ async function runJob(job) {
       const batch = res.data?.tweets || [];
       tweets.push(...batch);
       emit(job, 'log', `Page ${page}: ${batch.length} tweets (${Math.min(tweets.length, limit)} / ${limit})`);
-      if (!res.has_next_page || batch.length === 0) break;
+
+      if (!res.has_next_page) break;
+      // Some accounts return empty first pages — keep paginating up to 3 empty pages
+      if (batch.length === 0) { emptyStreak++; if (emptyStreak >= 3) break; }
+      else emptyStreak = 0;
+
       cursor = res.next_cursor;
-      if (tweets.length < limit) await new Promise(r => setTimeout(r, 5500));
+      await new Promise(r => setTimeout(r, 5500));
     }
 
     const capped = tweets.slice(0, limit);
