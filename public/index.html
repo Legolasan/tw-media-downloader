@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Twitter Media Downloader</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0e0e10;
+    --surface: #18181b;
+    --card:    #1f1f23;
+    --border:  #2a2a2f;
+    --accent:  #7c5cfc;
+    --accent2: #a78bfa;
+    --text:    #efeff1;
+    --muted:   #9ca3af;
+    --hover:   #2d2d35;
+    --ok:      #34d399;
+    --fail:    #f87171;
+    --warn:    #fbbf24;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px 60px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+
+  header h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(90deg, var(--accent2), #c4b5fd);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  header p {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.875rem;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    width: 100%;
+    max-width: 540px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 18px;
+  }
+
+  label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  input, select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color .2s;
+    width: 100%;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+  select option { background: var(--card); }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .2s, transform .15s, opacity .2s;
+    margin-top: 4px;
+  }
+  .btn:hover:not(:disabled) { background: #6d4ef0; transform: translateY(-1px); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+  /* Progress section */
+  #progress-section {
+    display: none;
+    width: 100%;
+    max-width: 540px;
+    margin-top: 24px;
+  }
+
+  .progress-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+  }
+
+  .progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .progress-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .progress-count {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .bar-track {
+    background: var(--surface);
+    border-radius: 999px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 18px;
+    border: 1px solid var(--border);
+  }
+
+  .bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width .4s ease;
+  }
+
+  .stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .stat {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    text-align: center;
+  }
+  .stat-val {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .stat-lbl {
+    font-size: 0.68rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 2px;
+  }
+  .stat-val.ok   { color: var(--ok); }
+  .stat-val.fail { color: var(--fail); }
+
+  /* Log */
+  #log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    height: 200px;
+    overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+
+  #log .ok   { color: var(--ok); }
+  #log .fail { color: var(--fail); }
+  #log .info { color: var(--accent2); }
+  #log .warn { color: var(--warn); }
+
+  /* Download button */
+  #dl-btn {
+    display: none;
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: var(--ok);
+    color: #0e0e10;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 14px;
+    transition: background .2s, transform .15s;
+    animation: pulse 1.5s ease infinite;
+  }
+  #dl-btn:hover { background: #6ee7b7; transform: translateY(-1px); animation: none; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,.4); }
+    50%       { box-shadow: 0 0 0 8px rgba(52,211,153,0); }
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-box {
+    background: rgba(248,113,113,.1);
+    border: 1px solid rgba(248,113,113,.3);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.82rem;
+    color: var(--fail);
+    margin-top: 12px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&#8659; Twitter Media Downloader</h1>
+  <p>Downloads images &amp; videos from any public X account as a ZIP</p>
+</header>
+
+<div class="card">
+  <div class="field">
+    <label>API Key <span style="color:var(--muted);font-weight:400;text-transform:none">(twitterapi.io)</span></label>
+    <input id="apiKey" type="password" placeholder="new1_xxxxxxxxxxxxxxxx" autocomplete="off"/>
+  </div>
+
+  <div class="field">
+    <label>Twitter Username</label>
+    <input id="username" type="text" placeholder="@iam___smash or iam___smash" autocomplete="off"/>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Post Limit</label>
+      <input id="limit" type="number" value="50" min="1" max="1000"/>
+    </div>
+    <div class="field">
+      <label>Media Type</label>
+      <select id="mediaType">
+        <option value="all">Images + Videos</option>
+        <option value="image">Images only</option>
+        <option value="video">Videos only</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="error-box" id="error-box"></div>
+
+  <button class="btn" id="start-btn" onclick="startDownload()">Download Media</button>
+</div>
+
+<div id="progress-section">
+  <div class="progress-card">
+    <div class="progress-header">
+      <span class="progress-title" id="progress-title">
+        <span class="spinner"></span> Fetching tweets…
+      </span>
+      <span class="progress-count" id="progress-count"></span>
+    </div>
+
+    <div class="bar-track">
+      <div class="bar-fill" id="bar-fill"></div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-val ok" id="stat-dl">0</div>
+        <div class="stat-lbl">Downloaded</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val fail" id="stat-fail">0</div>
+        <div class="stat-lbl">Failed</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-skip">0</div>
+        <div class="stat-lbl">Skipped</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-total">—</div>
+        <div class="stat-lbl">Total</div>
+      </div>
+    </div>
+
+    <div id="log"></div>
+
+    <button id="dl-btn" onclick="triggerDownload()">&#8659; Download ZIP</button>
+  </div>
+</div>
+
+<script>
+let jobId = null;
+let totalItems = 0;
+let es = null;
+
+function val(id) { return document.getElementById(id).value.trim(); }
+function $(id)   { return document.getElementById(id); }
+
+function appendLog(text, cls) {
+  const log = $('log');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function showError(msg) {
+  const box = $('error-box');
+  box.textContent = msg;
+  box.style.display = 'block';
+}
+
+function hideError() {
+  $('error-box').style.display = 'none';
+}
+
+async function startDownload() {
+  hideError();
+  const apiKey    = val('apiKey');
+  const username  = val('username');
+  const limit     = val('limit');
+  const mediaType = val('mediaType');
+
+  if (!apiKey)   return showError('API key is required.');
+  if (!username) return showError('Twitter username is required.');
+  if (!limit || limit < 1) return showError('Post limit must be at least 1.');
+
+  // Reset UI
+  $('start-btn').disabled = true;
+  $('log').innerHTML = '';
+  $('bar-fill').style.width = '0%';
+  $('stat-dl').textContent   = '0';
+  $('stat-fail').textContent = '0';
+  $('stat-skip').textContent = '0';
+  $('stat-total').textContent = '—';
+  $('dl-btn').style.display = 'none';
+  $('progress-title').innerHTML = '<span class="spinner"></span> Connecting…';
+  $('progress-count').textContent = '';
+  $('progress-section').style.display = 'block';
+  totalItems = 0;
+
+  try {
+    const res = await fetch('/api/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey, username, limit: parseInt(limit), mediaType }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      showError(data.error || 'Server error');
+      $('start-btn').disabled = false;
+      return;
+    }
+    jobId = data.jobId;
+  } catch (e) {
+    showError('Could not reach server: ' + e.message);
+    $('start-btn').disabled = false;
+    return;
+  }
+
+  // Open SSE stream
+  if (es) es.close();
+  es = new EventSource(`/api/progress/${jobId}`);
+
+  es.addEventListener('log', e => {
+    const msg = JSON.parse(e.data);
+    appendLog(msg, 'info');
+    $('progress-title').innerHTML = '<span class="spinner"></span> Downloading…';
+  });
+
+  es.addEventListener('total', e => {
+    totalItems = JSON.parse(e.data);
+    $('stat-total').textContent = totalItems;
+  });
+
+  es.addEventListener('progress', e => {
+    const d = JSON.parse(e.data);
+    const pct = totalItems > 0 ? Math.round((d.i / totalItems) * 100) : 0;
+    $('bar-fill').style.width = pct + '%';
+    $('progress-count').textContent = `${d.i} / ${totalItems} (${pct}%)`;
+    $('stat-dl').textContent   = d.downloaded;
+    $('stat-fail').textContent = d.failed;
+    $('stat-skip').textContent = d.skipped;
+
+    if (d.status === 'ok')   appendLog(`✓ ${d.file}  (${d.size} KB)`, 'ok');
+    if (d.status === 'fail') appendLog(`✗ ${d.file}  — ${d.err}`, 'fail');
+    if (d.status === 'skip') appendLog(`↷ ${d.file}  (skipped)`, 'warn');
+  });
+
+  es.addEventListener('done', e => {
+    const d = JSON.parse(e.data);
+    $('bar-fill').style.width = '100%';
+    $('progress-title').innerHTML = '&#10003; Complete';
+    $('progress-count').textContent = '';
+    appendLog(`Done — ${d.downloaded} downloaded, ${d.failed} failed, ${d.skipped} skipped`, 'info');
+    $('dl-btn').style.display = 'block';
+    $('start-btn').disabled = false;
+    es.close();
+  });
+
+  es.addEventListener('error', e => {
+    let msg = 'Unknown error';
+    try { msg = JSON.parse(e.data); } catch {}
+    showError(msg);
+    $('progress-title').textContent = 'Error';
+    $('start-btn').disabled = false;
+    es.close();
+  });
+
+  es.onerror = () => {
+    // SSE closed by server after completion — ignore
+    es.close();
+  };
+}
+
+function triggerDownload() {
+  if (!jobId) return;
+  window.location.href = `/api/zip/${jobId}`;
+}
+</script>
+</body>
+</html>

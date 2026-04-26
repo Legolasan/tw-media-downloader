@@ -1,0 +1,16 @@
+{
+  "name": "tw-media-downloader",
+  "version": "1.0.0",
+  "description": "Twitter media downloader web UI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
