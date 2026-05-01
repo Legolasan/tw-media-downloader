@@ -63,7 +63,19 @@ function bestVideo(variants = []) {
 
 function extractMedia(tweet) {
   const items = [];
-  for (const m of tweet.extendedEntities?.media || []) {
+  const seen = new Set();
+
+  // Check both extendedEntities and entities for media
+  const mediaSources = [
+    ...(tweet.extendedEntities?.media || []),
+    ...(tweet.entities?.media || [])
+  ];
+
+  for (const m of mediaSources) {
+    // Skip duplicates (same media can appear in both sources)
+    if (seen.has(m.id_str)) continue;
+    seen.add(m.id_str);
+
     if (m.type === 'photo') {
       const ext  = path.extname(m.media_url_https) || '.jpg';
       items.push({ url: m.media_url_https + '?name=large', name: `${tweet.id}_${m.id_str}${ext}`, kind: 'image' });
@@ -76,6 +88,10 @@ function extractMedia(tweet) {
     }
   }
   return items;
+}
+
+function tweetHasMediaPlaceholder(tweet) {
+  return tweet.extendedEntities?.media || tweet.entities?.media;
 }
 
 function emit(job, event, data) {
@@ -121,7 +137,18 @@ async function runJob(job) {
 
     // 2. Collect media
     let allMedia = [];
-    for (const t of capped) allMedia.push(...extractMedia(t));
+    let tweetsWithMedia = 0;
+    for (const t of capped) {
+      const media = extractMedia(t);
+      if (media.length > 0) {
+        tweetsWithMedia++;
+      } else if (tweetHasMediaPlaceholder(t)) {
+        // Tweet has media placeholder but extraction failed
+        emit(job, 'log', `Warning: Tweet ${t.id} has media placeholder but no extractable media`);
+      }
+      allMedia.push(...media);
+    }
+    emit(job, 'log', `Tweets with media: ${tweetsWithMedia} / ${capped.length}`);
 
     const filtered = mediaType === 'all'
       ? allMedia
