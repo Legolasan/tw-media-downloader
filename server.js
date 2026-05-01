@@ -142,29 +142,45 @@ async function runJob(job) {
 
     emit(job, 'total', filtered.length);
 
-    // 3. Download each file
+    // 3. Deduplicate media by id_str before downloading (same media can appear in multiple tweets)
+    const seen = new Set();
+    const uniqueFiltered = filtered.filter(m => {
+      // Extract media id_str from filename (format: tweetId_mediaId.ext)
+      const match = m.name.match(/_\d+/);
+      if (!match) return true;
+      const mediaId = match[0].slice(1); // remove leading underscore
+      if (seen.has(mediaId)) return false;
+      seen.add(mediaId);
+      return true;
+    });
+
+    if (uniqueFiltered.length < filtered.length) {
+      emit(job, 'log', `Deduplicated: ${filtered.length} → ${uniqueFiltered.length} unique media items`);
+    }
+
+    // 4. Download each file
     let downloaded = 0, failed = 0, skipped = 0;
 
-    for (const [i, item] of filtered.entries()) {
+    for (const [i, item] of uniqueFiltered.entries()) {
       const dest = path.join(tmpDir, item.name);
       if (fs.existsSync(dest)) {
         skipped++;
-        emit(job, 'progress', { i: i + 1, total: filtered.length, file: item.name, status: 'skip', downloaded, failed, skipped });
+        emit(job, 'progress', { i: i + 1, total: uniqueFiltered.length, file: item.name, status: 'skip', downloaded, failed, skipped });
         continue;
       }
       try {
         await downloadFile(item.url, dest);
         downloaded++;
         const size = Math.round(fs.statSync(dest).size / 1024);
-        emit(job, 'progress', { i: i + 1, total: filtered.length, file: item.name, status: 'ok', size, downloaded, failed, skipped });
+        emit(job, 'progress', { i: i + 1, total: uniqueFiltered.length, file: item.name, status: 'ok', size, downloaded, failed, skipped });
       } catch (err) {
         failed++;
-        emit(job, 'progress', { i: i + 1, total: filtered.length, file: item.name, status: 'fail', err: err.message, downloaded, failed, skipped });
+        emit(job, 'progress', { i: i + 1, total: uniqueFiltered.length, file: item.name, status: 'fail', err: err.message, downloaded, failed, skipped });
       }
     }
 
     job.status = 'done';
-    emit(job, 'done', { downloaded, failed, skipped, total: filtered.length });
+    emit(job, 'done', { downloaded, failed, skipped, total: uniqueFiltered.length });
 
   } catch (err) {
     job.status = 'error';
