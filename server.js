@@ -108,7 +108,8 @@ async function runJob(job) {
     // 1. Fetch tweets
     emit(job, 'log', `Fetching tweets for @${username}…`);
     const tweets = [];
-    let cursor = '', page = 0, emptyStreak = 0;
+    const seenTweetIds = new Set();
+    let cursor = '', page = 0, noNewStreak = 0;
 
     while (tweets.length < limit) {
       page++;
@@ -121,13 +122,26 @@ async function runJob(job) {
         throw new Error(res.message || res.msg || 'API error');
       }
       const batch = res.data?.tweets || [];
-      tweets.push(...batch);
-      emit(job, 'log', `Page ${page}: ${batch.length} tweets (${Math.min(tweets.length, limit)} / ${limit})`);
+      // The API will keep paging with has_next_page=true even after the user's
+      // timeline is exhausted, re-serving the same tweets. Dedup by tweet id
+      // so the count stays honest and we can detect "no new tweets" to bail.
+      const newTweets = batch.filter(t => !seenTweetIds.has(t.id));
+      for (const t of newTweets) seenTweetIds.add(t.id);
+      tweets.push(...newTweets);
+      emit(job, 'log', `Page ${page}: ${batch.length} tweets, ${newTweets.length} new (${Math.min(tweets.length, limit)} / ${limit})`);
 
       if (!res.has_next_page) break;
-      // Some accounts return empty first pages — keep paginating up to 3 empty pages
-      if (batch.length === 0) { emptyStreak++; if (emptyStreak >= 3) break; }
-      else emptyStreak = 0;
+      // Tolerate up to 3 consecutive pages with no new tweets — covers both
+      // empty first pages and the cursor-loop case above.
+      if (newTweets.length === 0) {
+        noNewStreak++;
+        if (noNewStreak >= 3) {
+          emit(job, 'log', `Stopping — ${noNewStreak} consecutive pages returned no new tweets`);
+          break;
+        }
+      } else {
+        noNewStreak = 0;
+      }
 
       cursor = res.next_cursor;
       await new Promise(r => setTimeout(r, 5500));
@@ -161,14 +175,6 @@ async function runJob(job) {
     if (mediaType !== 'all')
       emit(job, 'log', `Filtering to ${mediaType}s: ${filtered.length} items`);
 
-    if (filtered.length === 0) {
-      emit(job, 'done', { downloaded: 0, failed: 0, skipped: 0, total: 0 });
-      job.status = 'done';
-      return;
-    }
-
-    emit(job, 'total', filtered.length);
-
     // 3. Deduplicate media by id_str before downloading (same media can appear in multiple tweets)
     const seen = new Set();
     const uniqueFiltered = filtered.filter(m => {
@@ -184,6 +190,14 @@ async function runJob(job) {
     if (uniqueFiltered.length < filtered.length) {
       emit(job, 'log', `Deduplicated: ${filtered.length} → ${uniqueFiltered.length} unique media items`);
     }
+
+    if (uniqueFiltered.length === 0) {
+      emit(job, 'done', { downloaded: 0, failed: 0, skipped: 0, total: 0 });
+      job.status = 'done';
+      return;
+    }
+
+    emit(job, 'total', uniqueFiltered.length);
 
     // 4. Download each file
     let downloaded = 0, failed = 0, skipped = 0;
